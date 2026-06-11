@@ -1,15 +1,28 @@
 # Python
 .venv/
+venv/
 __pycache__/
 *.pyc
 
-# TLS material — server.key must never be committed
+# TLS material
 certs/
+*.key
+*.pem
+*.crt
+*.csr
 
-# Local secrets (AUTH_PASSWORD_HASH etc. live in env vars / EnvironmentFile)
+# Local secrets
 .env
 secrets.env
 *.env
 
+
+# OS junk
+Thumbs.db
+desktop.ini
+*:Zone.Identifier
+.DS_Store
+
+# Internal docs
 DEPLOY.md
-README.md
+README_old.md
