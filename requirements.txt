@@ -1,0 +1,4 @@
+aiohttp>=3.9
+websockets>=12.0
+argon2-cffi>=23.1     # only needed if AUTH_PASSWORD_HASH is set
+cryptography>=42.0    # only needed to run gen_cert.py

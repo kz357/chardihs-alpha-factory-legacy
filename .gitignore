@@ -1,0 +1,15 @@
+# Python
+.venv/
+__pycache__/
+*.pyc
+
+# TLS material — server.key must never be committed
+certs/
+
+# Local secrets (AUTH_PASSWORD_HASH etc. live in env vars / EnvironmentFile)
+.env
+secrets.env
+*.env
+
+DEPLOY.md
+README.md

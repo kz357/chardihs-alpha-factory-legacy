@@ -1,0 +1,621 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Chardih's Alpha Factory</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { background: #0a0a0a; color: #e0e0e0; font-family: 'Segoe UI', monospace; }
+  #header {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 12px 20px; background: #111;
+  }
+  #header h1 { font-size: 16px; font-weight: 600; }
+  #price-display {
+    font-size: 22px; font-weight: 700; font-family: monospace;
+    transition: color 0.15s;
+  }
+  #stats { font-size: 12px; color: #888; display: flex; gap: 20px; }
+
+  /* --- Charts row --- */
+  #charts-row {
+    display: flex; width: 100%; height: calc(65vh - 52px);
+  }
+  .chart-panel {
+    flex: 1; position: relative; min-width: 0;
+  }
+  .chart-panel + .chart-panel { border-left: 1px solid #222; }
+  .chart-panel canvas { display: block; width: 100%; height: 100%; }
+  .chart-label {
+    position: absolute; top: 10px; left: 16px; z-index: 10;
+    font-size: 11px; color: #555; font-weight: 600;
+  }
+  .chart-price-tag {
+    position: absolute; top: 8px; left: 100px; z-index: 10;
+    font-size: 13px; font-weight: 700; font-family: monospace;
+    transition: color 0.15s;
+  }
+  #controls {
+    position: absolute; top: 10px; right: 16px;
+    display: flex; gap: 8px; z-index: 10;
+  }
+  #controls button {
+    background: #222; color: #aaa; border: 1px solid #333;
+    padding: 4px 10px; font-size: 11px; cursor: pointer; border-radius: 3px;
+  }
+  #controls button.active { color: #fff; border-color: #4CAF50; background: #1a2e1a; }
+  #controls button:hover { border-color: #555; }
+
+  /* --- Trade panel (retired — display only) --- */
+  #trades-panel {
+    height: 35vh; background: #0d0d0d; border-top: 1px solid #222;
+    display: flex; flex-direction: column; overflow: hidden;
+  }
+  #trades-header {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 10px 20px; background: #111; border-bottom: 1px solid #1a1a1a;
+    flex-shrink: 0;
+  }
+  #trades-header h2 { font-size: 14px; font-weight: 600; }
+  .retired-badge {
+    display: inline-block; font-size: 9px; font-weight: 700; padding: 2px 6px;
+    border-radius: 2px; margin-left: 8px; vertical-align: middle;
+    background: #2a1a1a; color: #f44336; border: 1px solid #3a2222;
+    letter-spacing: 1px;
+  }
+  #trades-stats { font-size: 12px; display: flex; flex-direction: column; gap: 2px; opacity: 0.45; }
+  .stats-row { display: flex; gap: 16px; align-items: center; }
+  .stats-row-label { font-weight: 700; font-size: 10px; width: 38px; flex-shrink: 0; }
+  .stat-label { color: #666; }
+  .stat-value { font-weight: 600; }
+  .stat-positive { color: #4CAF50; }
+  .stat-negative { color: #f44336; }
+  .reset-group { display: flex; align-items: center; gap: 4px; margin-left: 8px; }
+  .reset-btn {
+    border: 1px solid #333; padding: 2px 8px; font-size: 11px; border-radius: 3px;
+    cursor: not-allowed; opacity: 0.6;
+  }
+  .reset-input {
+    width: 60px; background: #1a1a1a; color: #555; border: 1px solid #333;
+    padding: 2px 6px; font-size: 12px; font-family: monospace; border-radius: 3px;
+  }
+  #reset-maker-btn { background: #1a2e1a; color: #4CAF50; }
+  #reset-taker-btn { background: #1a2a3a; color: #42a5f5; }
+  #reset-hybrid-btn { background: #2a1f0a; color: #FF9800; }
+  #reset-live_hybrid-btn { background: #0a2a2a; color: #00e5ff; }
+  #reset-live_taker-btn { background: #1a1a3a; color: #ab47bc; }
+  .kill-btn { background: #600; color: #f44; }
+
+  /* --- Trades body: log + history sidebar --- */
+  #trades-body { display: flex; flex: 1; overflow: hidden; }
+  #trades-log {
+    flex: 1; overflow-y: auto; padding: 0;
+    font-size: 12px; font-family: monospace;
+  }
+  .trade-row {
+    display: flex; align-items: center; gap: 12px;
+    padding: 6px 20px; border-bottom: 1px solid #141414;
+  }
+  .trade-time { color: #aaa; width: 70px; flex-shrink: 0; }
+  .trade-side { width: 70px; font-weight: 700; flex-shrink: 0; }
+  .trade-detail { color: #aaa; flex: 1; }
+  .trade-icon { width: 20px; flex-shrink: 0; text-align: center; }
+  .trade-row.skip .trade-time,
+  .trade-row.skip .trade-detail { color: #666; }
+  .trade-row.skip .trade-side { color: #555; }
+  #trade-history {
+    width: 160px; flex-shrink: 0; border-left: 1px solid #222;
+    overflow-y: auto; padding: 0; font-size: 11px; font-family: monospace;
+  }
+  #trade-history .th-title {
+    padding: 6px 10px; color: #555; font-weight: 600;
+    border-bottom: 1px solid #1a1a1a; position: sticky; top: 0;
+    background: #0d0d0d;
+  }
+  .th-empty { padding: 8px 10px; color: #444; }
+</style>
+</head>
+<body>
+
+<div id="header">
+  <h1>Chardih's Alpha Factory</h1>
+  <div id="price-display">--</div>
+  <div id="stats">
+    <span id="stat-ticks">Ticks: 0</span>
+    <span id="stat-range">Range: --</span>
+    <span id="stat-tps">TPS: --</span>
+    <span id="stat-status">Connecting...</span>
+  </div>
+</div>
+
+<div id="charts-row">
+  <div class="chart-panel" id="btc-panel">
+    <span class="chart-label">BTC-USD</span>
+    <span class="chart-price-tag" id="btc-price-tag">--</span>
+    <div id="controls">
+      <button data-window="30" class="active">30s</button>
+      <button data-window="60">1m</button>
+      <button data-window="120">2m</button>
+      <button data-window="300">5m</button>
+      <button data-window="600">10m</button>
+    </div>
+    <canvas id="chart-btc"></canvas>
+  </div>
+  <div class="chart-panel" id="poly-panel">
+    <span class="chart-label">Polymarket Up</span>
+    <span class="chart-price-tag" id="poly-price-tag" style="left:120px">--</span>
+    <canvas id="chart-poly"></canvas>
+  </div>
+</div>
+
+<!-- Trade panel preserved for posterity. The traders are gone; nothing below ever updates. -->
+<div id="trades-panel">
+  <div id="trades-header">
+    <h2>Trades<span class="retired-badge">RETIRED</span></h2>
+    <div id="trades-stats">
+      <div class="stats-row">
+        <span class="stats-row-label" style="color:#4CAF50">MKR</span>
+        <span><span class="stat-label">B: </span><span class="stat-value">--</span></span>
+        <span><span class="stat-label">PnL: </span><span class="stat-value">--</span></span>
+        <span><span class="stat-label">T: </span><span class="stat-value">--</span></span>
+        <span><span class="stat-label">WR: </span><span class="stat-value">--</span></span>
+        <span class="reset-group">
+          <input type="number" class="reset-input" value="300" disabled>
+          <button class="reset-btn" id="reset-maker-btn" disabled title="Trading retired">&#8635; MKR</button>
+        </span>
+      </div>
+      <div class="stats-row">
+        <span class="stats-row-label" style="color:#42a5f5">TKR</span>
+        <span><span class="stat-label">B: </span><span class="stat-value">--</span></span>
+        <span><span class="stat-label">PnL: </span><span class="stat-value">--</span></span>
+        <span><span class="stat-label">T: </span><span class="stat-value">--</span></span>
+        <span><span class="stat-label">WR: </span><span class="stat-value">--</span></span>
+        <span class="reset-group">
+          <input type="number" class="reset-input" value="300" disabled>
+          <button class="reset-btn" id="reset-taker-btn" disabled title="Trading retired">&#8635; TKR</button>
+        </span>
+      </div>
+      <div class="stats-row">
+        <span class="stats-row-label" style="color:#FF9800">HYB</span>
+        <span><span class="stat-label">B: </span><span class="stat-value">--</span></span>
+        <span><span class="stat-label">PnL: </span><span class="stat-value">--</span></span>
+        <span><span class="stat-label">T: </span><span class="stat-value">--</span></span>
+        <span><span class="stat-label">WR: </span><span class="stat-value">--</span></span>
+        <span class="reset-group">
+          <input type="number" class="reset-input" value="300" disabled>
+          <button class="reset-btn" id="reset-hybrid-btn" disabled title="Trading retired">&#8635; HYB</button>
+        </span>
+      </div>
+      <div class="stats-row">
+        <span class="stats-row-label" style="color:#00e5ff; white-space:nowrap">L-HYB</span>
+        <span><span class="stat-label">B: </span><span class="stat-value">--</span></span>
+        <span><span class="stat-label">PnL: </span><span class="stat-value">--</span></span>
+        <span><span class="stat-label">T: </span><span class="stat-value">--</span></span>
+        <span><span class="stat-label">WR: </span><span class="stat-value">--</span></span>
+        <span class="reset-group">
+          <input type="number" class="reset-input" value="11" disabled>
+          <button class="reset-btn" id="reset-live_hybrid-btn" disabled title="Trading retired">&#8635; LH</button>
+          <button class="reset-btn kill-btn" disabled title="Trading retired">KILL</button>
+        </span>
+      </div>
+      <div class="stats-row">
+        <span class="stats-row-label" style="color:#ab47bc; white-space:nowrap">L-TKR</span>
+        <span><span class="stat-label">B: </span><span class="stat-value">--</span></span>
+        <span><span class="stat-label">PnL: </span><span class="stat-value">--</span></span>
+        <span><span class="stat-label">T: </span><span class="stat-value">--</span></span>
+        <span><span class="stat-label">WR: </span><span class="stat-value">--</span></span>
+        <span class="reset-group">
+          <input type="number" class="reset-input" value="50" disabled>
+          <button class="reset-btn" id="reset-live_taker-btn" disabled title="Trading retired">&#8635; LT</button>
+          <button class="reset-btn kill-btn" disabled title="Trading retired">KILL</button>
+        </span>
+      </div>
+    </div>
+  </div>
+  <div id="trades-body">
+    <div id="trades-log">
+      <div class="trade-row skip">
+        <span class="trade-time">--:--:--</span>
+        <span class="trade-side">retired</span>
+        <span class="trade-detail">Trading is shut down. Here you can see the scrapers.</span>
+        <span class="trade-icon" style="color:#444">&mdash;</span>
+      </div>
+    </div>
+    <div id="trade-history">
+      <div class="th-title">Trade History</div>
+      <div class="th-empty">(retired)</div>
+    </div>
+  </div>
+</div>
+
+<script>
+(function() {
+  // --- Config ---
+  const WS_URL = (window.location.protocol === 'https:' ? 'wss://' : 'ws://') + window.location.host + '/ws';
+  const MAX_POINTS = 50000;
+  let windowSeconds = 30;
+
+  // --- BTC State ---
+  const btcTicks = [];
+  let btcCount = 0;
+  let lastBtcPrice = null;
+  let prevBtcPrice = null;
+  let tpsWindow = [];
+
+  // Epoch reference price (updates every 5 min)
+  const EPOCH_S = 300;
+  let currentEpoch = Math.floor(Date.now() / 1000 / EPOCH_S) * EPOCH_S;
+  let epochStartPrice = null;
+
+  // --- Poly State ---
+  const polyBidTicks = [];  // {t: timestamp_ms, p: best_bid}
+  const polyAskTicks = [];  // {t: timestamp_ms, p: best_ask}
+  let lastPolyBid = null;
+  let lastPolyAsk = null;
+
+  // --- DOM ---
+  const btcCanvas = document.getElementById('chart-btc');
+  const btcCtx = btcCanvas.getContext('2d');
+  const polyCanvas = document.getElementById('chart-poly');
+  const polyCtx = polyCanvas.getContext('2d');
+  const priceEl = document.getElementById('price-display');
+  const btcPriceTag = document.getElementById('btc-price-tag');
+  const polyPriceTag = document.getElementById('poly-price-tag');
+  const statTicks = document.getElementById('stat-ticks');
+  const statRange = document.getElementById('stat-range');
+  const statTps = document.getElementById('stat-tps');
+  const statStatus = document.getElementById('stat-status');
+
+  // --- Controls ---
+  document.querySelectorAll('#controls button').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelector('#controls .active').classList.remove('active');
+      btn.classList.add('active');
+      windowSeconds = parseInt(btn.dataset.window);
+    });
+  });
+
+  // --- WebSocket ---
+  function connect() {
+    statStatus.textContent = 'Connecting...';
+    const ws = new WebSocket(WS_URL);
+
+    ws.onopen = () => {
+      statStatus.textContent = 'Connected';
+      statStatus.style.color = '#4CAF50';
+    };
+
+    ws.onmessage = (evt) => {
+      const row = JSON.parse(evt.data);
+
+      // Trading is retired — trade/signal/position messages will never arrive,
+      // but ignore them gracefully if an old server ever sends one.
+      if (row.type === 'trade' || row.type === 'signal' ||
+          row.type === 'position_update' || row.type === 'bankroll_reset' ||
+          row.type === 'kill_switch') {
+        return;
+      }
+
+      // --- Poly ticks ---
+      if (row.type === 'poly_bid') {
+        if (row.contract === 'Up') {
+          const t = row.timestamp_ms || Date.now();
+          lastPolyBid = row.best_bid;
+          polyBidTicks.push({ t, p: row.best_bid });
+          if (polyBidTicks.length > MAX_POINTS) polyBidTicks.splice(0, polyBidTicks.length - MAX_POINTS);
+        }
+        return;
+      }
+      if (row.type === 'poly_ask') {
+        if (row.contract === 'Up') {
+          const t = row.timestamp_ms || Date.now();
+          lastPolyAsk = row.best_ask;
+          polyAskTicks.push({ t, p: row.best_ask });
+          if (polyAskTicks.length > MAX_POINTS) polyAskTicks.splice(0, polyAskTicks.length - MAX_POINTS);
+        }
+        return;
+      }
+
+      // --- BTC tick (untyped rows) ---
+      const price = row.price;
+      if (price === undefined) return;
+      const time = row.timestamp_ms || Date.now();
+
+      // Detect epoch transition -> capture reference price
+      const tickEpoch = Math.floor(time / 1000 / EPOCH_S) * EPOCH_S;
+      if (tickEpoch !== currentEpoch) {
+        currentEpoch = tickEpoch;
+        epochStartPrice = price;
+      }
+      if (epochStartPrice === null) epochStartPrice = price;
+
+      prevBtcPrice = lastBtcPrice;
+      lastBtcPrice = price;
+      btcCount++;
+
+      btcTicks.push({ t: time, p: price });
+      if (btcTicks.length > MAX_POINTS) btcTicks.splice(0, btcTicks.length - MAX_POINTS);
+
+      const now = Date.now();
+      tpsWindow.push(now);
+      while (tpsWindow.length && tpsWindow[0] < now - 5000) tpsWindow.shift();
+    };
+
+    ws.onclose = () => {
+      statStatus.textContent = 'Disconnected — reconnecting...';
+      statStatus.style.color = '#f44336';
+      setTimeout(connect, 2000);
+    };
+
+    ws.onerror = () => ws.close();
+  }
+
+  // --- Rendering ---
+  const PADDING = { top: 20, right: 80, bottom: 30, left: 10 };
+  const GRID_COLOR = '#1a1a1a';
+  const TEXT_COLOR = '#666';
+
+  function resizeCanvas(canvas) {
+    const container = canvas.parentElement;
+    const ctx = canvas.getContext('2d');
+    canvas.width = container.clientWidth * devicePixelRatio;
+    canvas.height = container.clientHeight * devicePixelRatio;
+    canvas.style.width = container.clientWidth + 'px';
+    canvas.style.height = container.clientHeight + 'px';
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.scale(devicePixelRatio, devicePixelRatio);
+  }
+
+  function resize() {
+    resizeCanvas(btcCanvas);
+    resizeCanvas(polyCanvas);
+  }
+
+  function getVisible(tickArr) {
+    const cutoff = Date.now() - windowSeconds * 1000;
+    let start = tickArr.length;
+    for (let i = tickArr.length - 1; i >= 0; i--) {
+      if (tickArr[i].t < cutoff) break;
+      start = i;
+    }
+    return tickArr.slice(start);
+  }
+
+  function drawChart(ctx, canvas, visible, opts) {
+    const w = canvas.width / devicePixelRatio;
+    const h = canvas.height / devicePixelRatio;
+    ctx.clearRect(0, 0, w, h);
+
+    const secondary = opts.secondary || [];
+
+    if (visible.length < 2 && secondary.length < 2) {
+      ctx.fillStyle = TEXT_COLOR;
+      ctx.font = '14px monospace';
+      ctx.textAlign = 'center';
+      ctx.fillText('Waiting for data...', w / 2, h / 2);
+      return;
+    }
+
+    const now = Date.now();
+    const tMin = now - windowSeconds * 1000;
+    const tMax = now;
+
+    let pMin = Infinity, pMax = -Infinity;
+    for (const tick of visible) {
+      if (tick.p < pMin) pMin = tick.p;
+      if (tick.p > pMax) pMax = tick.p;
+    }
+    for (const tick of secondary) {
+      if (tick.p < pMin) pMin = tick.p;
+      if (tick.p > pMax) pMax = tick.p;
+    }
+
+    const pRange = Math.max(pMax - pMin, opts.minRange);
+    const pPad = pRange * 0.1;
+    pMin -= pPad;
+    pMax += pPad;
+
+    const plotW = w - PADDING.left - PADDING.right;
+    const plotH = h - PADDING.top - PADDING.bottom;
+
+    function xOf(t) { return PADDING.left + ((t - tMin) / (tMax - tMin)) * plotW; }
+    function yOf(p) { return PADDING.top + ((pMax - p) / (pMax - pMin)) * plotH; }
+
+    // Grid lines (price)
+    const niceStep = niceInterval(pMax - pMin, 6);
+    const gridStart = Math.ceil(pMin / niceStep) * niceStep;
+    ctx.strokeStyle = GRID_COLOR;
+    ctx.lineWidth = 1;
+    ctx.font = '10px monospace';
+    ctx.fillStyle = TEXT_COLOR;
+    ctx.textAlign = 'left';
+
+    for (let p = gridStart; p <= pMax; p += niceStep) {
+      const y = yOf(p);
+      ctx.beginPath();
+      ctx.moveTo(PADDING.left, y);
+      ctx.lineTo(w - PADDING.right, y);
+      ctx.stroke();
+      ctx.fillText(opts.fmtPrice(p), w - PADDING.right + 6, y + 3);
+    }
+
+    // Grid lines (time)
+    const timeStep = niceTimeStep(windowSeconds);
+    ctx.textAlign = 'center';
+    const tGridStart = Math.ceil(tMin / timeStep) * timeStep;
+    for (let t = tGridStart; t <= tMax; t += timeStep) {
+      const x = xOf(t);
+      ctx.beginPath();
+      ctx.moveTo(x, PADDING.top);
+      ctx.lineTo(x, h - PADDING.bottom);
+      ctx.stroke();
+      const d = new Date(t);
+      ctx.fillText(
+        d.getHours().toString().padStart(2,'0') + ':' +
+        d.getMinutes().toString().padStart(2,'0') + ':' +
+        d.getSeconds().toString().padStart(2,'0'),
+        x, h - PADDING.bottom + 14
+      );
+    }
+
+    // Secondary line (e.g. ask)
+    if (secondary.length >= 2) {
+      ctx.beginPath();
+      ctx.lineWidth = 1.5;
+      let started = false;
+      for (const tick of secondary) {
+        const x = xOf(tick.t);
+        const y = yOf(tick.p);
+        if (!started) { ctx.moveTo(x, y); started = true; }
+        else ctx.lineTo(x, y);
+      }
+      ctx.strokeStyle = opts.secondaryColor || '#ff9800';
+      ctx.stroke();
+    }
+
+    // Primary line
+    if (visible.length >= 2) {
+      const firstP = visible[0].p;
+      const lastP = visible[visible.length - 1].p;
+      const up = lastP >= firstP;
+
+      ctx.beginPath();
+      ctx.lineWidth = 1.5;
+      let started = false;
+      for (const tick of visible) {
+        const x = xOf(tick.t);
+        const y = yOf(tick.p);
+        if (!started) { ctx.moveTo(x, y); started = true; }
+        else ctx.lineTo(x, y);
+      }
+      ctx.strokeStyle = up ? opts.colorUp : opts.colorDown;
+      ctx.stroke();
+
+      // Current price dashed line + label
+      const curPrice = visible[visible.length - 1].p;
+      const yLast = yOf(curPrice);
+      ctx.setLineDash([4, 4]);
+      ctx.strokeStyle = up ? opts.colorUp : opts.colorDown;
+      ctx.lineWidth = 0.8;
+      ctx.beginPath();
+      ctx.moveTo(PADDING.left, yLast);
+      ctx.lineTo(w - PADDING.right, yLast);
+      ctx.stroke();
+      ctx.setLineDash([]);
+
+      ctx.fillStyle = up ? opts.bgUp : opts.bgDown;
+      const labelW = 72, labelH = 18;
+      ctx.fillRect(w - PADDING.right + 2, yLast - labelH/2, labelW, labelH);
+      ctx.fillStyle = up ? opts.colorUp : opts.colorDown;
+      ctx.font = 'bold 10px monospace';
+      ctx.textAlign = 'left';
+      ctx.fillText(opts.fmtPrice(curPrice), w - PADDING.right + 6, yLast + 4);
+    }
+
+    // Epoch reference price line
+    if (opts.refPrice !== null && opts.refPrice !== undefined) {
+      const yRef = yOf(opts.refPrice);
+      if (yRef >= PADDING.top && yRef <= h - PADDING.bottom) {
+        ctx.setLineDash([8, 4]);
+        ctx.strokeStyle = '#b0a040';
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.moveTo(PADDING.left, yRef);
+        ctx.lineTo(w - PADDING.right, yRef);
+        ctx.stroke();
+        ctx.setLineDash([]);
+
+        // Label on left
+        ctx.fillStyle = '#2a2a1a';
+        ctx.fillRect(PADDING.left, yRef - 9, 62, 18);
+        ctx.fillStyle = '#b0a040';
+        ctx.font = 'bold 10px monospace';
+        ctx.textAlign = 'left';
+        ctx.fillText('EPOCH', PADDING.left + 4, yRef + 4);
+      }
+    }
+  }
+
+  function draw() {
+    // BTC chart
+    const btcVisible = getVisible(btcTicks);
+    drawChart(btcCtx, btcCanvas, btcVisible, {
+      colorUp: '#4CAF50', colorDown: '#f44336',
+      bgUp: '#1a3a1a', bgDown: '#3a1a1a',
+      minRange: 0.50,
+      fmtPrice: p => '$' + p.toFixed(2),
+      refPrice: epochStartPrice,
+    });
+
+    // Poly chart — bid (blue) + ask (orange)
+    const polyBidVisible = getVisible(polyBidTicks);
+    const polyAskVisible = getVisible(polyAskTicks);
+    drawChart(polyCtx, polyCanvas, polyBidVisible, {
+      colorUp: '#42a5f5', colorDown: '#42a5f5',
+      bgUp: '#1a2a3a', bgDown: '#1a2a3a',
+      minRange: 0.005,
+      secondary: polyAskVisible, secondaryColor: '#ff9800',
+      fmtPrice: p => p.toFixed(4),
+    });
+
+    // Update header stats
+    if (lastBtcPrice !== null) {
+      priceEl.textContent = '$' + lastBtcPrice.toLocaleString('en-US', {
+        minimumFractionDigits: 2, maximumFractionDigits: 2
+      });
+      if (prevBtcPrice !== null) {
+        priceEl.style.color = lastBtcPrice >= prevBtcPrice ? '#4CAF50' : '#f44336';
+      }
+      btcPriceTag.textContent = '$' + lastBtcPrice.toFixed(2);
+      btcPriceTag.style.color = (prevBtcPrice !== null && lastBtcPrice >= prevBtcPrice) ? '#4CAF50' : '#f44336';
+    }
+
+    if (lastPolyBid !== null || lastPolyAsk !== null) {
+      const bidStr = lastPolyBid !== null ? lastPolyBid.toFixed(4) : '--';
+      const askStr = lastPolyAsk !== null ? lastPolyAsk.toFixed(4) : '--';
+      polyPriceTag.textContent = 'b:' + bidStr + '  a:' + askStr;
+      polyPriceTag.style.color = '#888';
+    }
+
+    statTicks.textContent = 'Ticks: ' + btcCount.toLocaleString();
+    const tps = (tpsWindow.length / 5).toFixed(1);
+    statTps.textContent = 'TPS: ' + tps;
+
+    if (btcVisible.length >= 2) {
+      let bMin = Infinity, bMax = -Infinity;
+      for (const t of btcVisible) { if (t.p < bMin) bMin = t.p; if (t.p > bMax) bMax = t.p; }
+      statRange.textContent = 'Range: $' + (bMax - bMin).toFixed(2);
+    }
+
+    requestAnimationFrame(draw);
+  }
+
+  function niceInterval(range, targetTicks) {
+    const rough = range / targetTicks;
+    const mag = Math.pow(10, Math.floor(Math.log10(rough)));
+    const norm = rough / mag;
+    let nice;
+    if (norm <= 1) nice = 1;
+    else if (norm <= 2) nice = 2;
+    else if (norm <= 5) nice = 5;
+    else nice = 10;
+    return nice * mag;
+  }
+
+  function niceTimeStep(windowSec) {
+    if (windowSec <= 30) return 5000;
+    if (windowSec <= 60) return 10000;
+    if (windowSec <= 120) return 15000;
+    if (windowSec <= 300) return 30000;
+    return 60000;
+  }
+
+  // --- Init ---
+  window.addEventListener('resize', resize);
+  resize();
+  connect();
+  requestAnimationFrame(draw);
+})();
+</script>
+</body>
+</html>
